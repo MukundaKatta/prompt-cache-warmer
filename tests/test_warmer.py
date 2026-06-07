@@ -100,14 +100,18 @@ class _FakeClient:
 
 
 def test_warm_returns_warm_result_with_token_counts():
-    client = _FakeClient([
-        _FakeResp(_FakeUsage(
-            input_tokens=10,
-            output_tokens=4,
-            cache_creation_input_tokens=12000,
-            cache_read_input_tokens=0,
-        )),
-    ])
+    client = _FakeClient(
+        [
+            _FakeResp(
+                _FakeUsage(
+                    input_tokens=10,
+                    output_tokens=4,
+                    cache_creation_input_tokens=12000,
+                    cache_read_input_tokens=0,
+                )
+            ),
+        ]
+    )
     w = Warmer(client)
     out = w.warm(
         model="claude-opus-4-7",
@@ -154,10 +158,12 @@ def test_warm_uses_supplied_messages_and_tools():
 
 
 def test_warm_verify_returns_cache_read_tokens():
-    client = _FakeClient([
-        _FakeResp(_FakeUsage(cache_creation_input_tokens=5000)),
-        _FakeResp(_FakeUsage(cache_read_input_tokens=5000)),
-    ])
+    client = _FakeClient(
+        [
+            _FakeResp(_FakeUsage(cache_creation_input_tokens=5000)),
+            _FakeResp(_FakeUsage(cache_read_input_tokens=5000)),
+        ]
+    )
     w = Warmer(client)
     out = w.warm(model="claude-opus-4-7", system="x", verify=True)
     assert out.verified_hit_tokens == 5000
@@ -166,13 +172,17 @@ def test_warm_verify_returns_cache_read_tokens():
 
 
 def test_warm_cost_estimate_with_default_prices():
-    client = _FakeClient([
-        _FakeResp(_FakeUsage(
-            input_tokens=0,
-            output_tokens=10,
-            cache_creation_input_tokens=1_000_000,
-        )),
-    ])
+    client = _FakeClient(
+        [
+            _FakeResp(
+                _FakeUsage(
+                    input_tokens=0,
+                    output_tokens=10,
+                    cache_creation_input_tokens=1_000_000,
+                )
+            ),
+        ]
+    )
     w = Warmer(client)
     out = w.warm(model="claude-opus-4-7", system="x")
     # 1M write tokens * $15/M * 1.25 = $18.75, + 10 out tokens * $75/M ~ 0.00075
@@ -233,3 +243,41 @@ def test_warm_handles_dict_response_shape():
     out = w.warm(model="claude-opus-4-7", system="x")
     assert out.input_tokens == 11
     assert out.cache_creation_input_tokens == 100
+
+
+def test_add_cache_breakpoints_empty_is_noop():
+    assert add_cache_breakpoints([], breakpoints=3) == []
+
+
+def test_add_cache_breakpoints_marks_all_when_breakpoints_exceed_blocks():
+    blocks = [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]
+    out = add_cache_breakpoints(blocks, breakpoints=2)
+    assert out[0]["cache_control"] == {"type": "ephemeral"}
+    assert out[1]["cache_control"] == {"type": "ephemeral"}
+
+
+def test_warm_handles_response_without_usage():
+    class _NoUsageResp:
+        pass
+
+    def fake_call(kwargs: dict):
+        return _NoUsageResp()
+
+    w = Warmer(fake_call)
+    out = w.warm(model="claude-opus-4-7", system="x")
+    # missing usage degrades gracefully to zeros, not an error.
+    assert out.input_tokens == 0
+    assert out.cache_creation_input_tokens == 0
+    assert out.cache_read_input_tokens == 0
+    assert out.output_tokens == 0
+    # cost is still computable (all zeros -> 0.0) for a known model.
+    assert out.cost_usd == 0.0
+
+
+def test_warm_respects_custom_price_table():
+    client = _FakeClient([_FakeResp(_FakeUsage(input_tokens=1_000_000))])
+    w = Warmer(client, prices={"claude-opus-4-7": {"input": 30.0, "output": 60.0}})
+    out = w.warm(model="claude-opus-4-7", system="x")
+    # 1M input tokens * $30/M = $30.00
+    assert out.cost_usd is not None
+    assert abs(out.cost_usd - 30.0) < 1e-6

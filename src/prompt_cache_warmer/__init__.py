@@ -132,9 +132,7 @@ def add_cache_breakpoints(
 
 def _normalize_client(client_or_callable: Any) -> Callable[[dict], Any]:
     """Return a callable that takes kwargs as a dict and returns a Message."""
-    if callable(client_or_callable) and not hasattr(
-        client_or_callable, "messages"
-    ):
+    if callable(client_or_callable) and not hasattr(client_or_callable, "messages"):
         # already a (kwargs)->resp callable
         return client_or_callable  # type: ignore[return-value]
 
@@ -200,9 +198,7 @@ class Warmer:
         system_blocks = add_cache_breakpoints(
             to_system_blocks(system), breakpoints=breakpoints
         )
-        msgs = list(messages) if messages else [
-            {"role": "user", "content": ping_text}
-        ]
+        msgs = list(messages) if messages else [{"role": "user", "content": ping_text}]
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -236,9 +232,7 @@ class Warmer:
             cache_creation_input_tokens=_usage_get(
                 usage1, "cache_creation_input_tokens", 0
             ),
-            cache_read_input_tokens=_usage_get(
-                usage1, "cache_read_input_tokens", 0
-            ),
+            cache_read_input_tokens=_usage_get(usage1, "cache_read_input_tokens", 0),
             input_tokens=_usage_get(usage1, "input_tokens", 0),
             output_tokens=_usage_get(usage1, "output_tokens", 0),
             latency_ms_warm=warm_ms,
